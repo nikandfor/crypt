@@ -1,18 +1,20 @@
 package main
 
 import (
-	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
-	"hash"
 	"hash/crc32"
 	"os"
 	"strconv"
 	"strings"
 
+	"golang.org/x/crypto/pbkdf2"
+
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil/hdkeychain"
 	"github.com/pkg/errors"
+	bip39 "github.com/tyler-smith/go-bip39"
 	cli "gopkg.in/urfave/cli.v2"
 )
 
@@ -52,14 +54,23 @@ func main() {
 			Flags: []cli.Flag{
 				&cli.BoolFlag{Name: "priv", Aliases: []string{"p"}, Value: false},
 			},
+			Before: initKey,
+		},
+		{
+			Name:        "mnemonic",
+			Usage:       "",
+			Description: "generates mnemonic",
+			Action:      genMnemonic,
+			Flags: []cli.Flag{
+				&cli.IntFlag{Name: "size"},
+			},
 		},
 	}
 	app.Flags = []cli.Flag{
-		&cli.StringFlag{Name: "mnenomic", Aliases: []string{"m"}},
-		&cli.IntFlag{Name: "rounds", Aliases: []string{"r"}},
+		&cli.StringFlag{Name: "mnemonic", Aliases: []string{"m"}},
+		&cli.StringFlag{Name: "pass", Aliases: []string{"p"}},
 		&cli.StringFlag{Name: "seed", Aliases: []string{"s"}},
 	}
-	app.Before = initKey
 
 	app.Run(os.Args)
 }
@@ -68,6 +79,7 @@ func initKey(c *cli.Context) error {
 	if seed := c.String("seed"); len(seed) != 0 {
 		switch len(seed) {
 		case 2 * hdkeychain.RecommendedSeedLen:
+		case 128:
 		default:
 			return fmt.Errorf("unexpected seed len: %d", len(seed))
 		}
@@ -83,13 +95,14 @@ func initKey(c *cli.Context) error {
 		return generateKey(b)
 	}
 
+	pass := c.String("pass")
 	mnemonic := c.String("mnemonic")
-	rounds := c.Int("rounds")
-	if rounds < 1 {
-		return fmt.Errorf("rounds must be greater than 0 (have %d)", rounds)
+	if !bip39.IsMnemonicValid(mnemonic) {
+		return errors.New("mnemonic is invalid")
 	}
+	mnemonic = normalizeMnemonic(mnemonic)
 
-	seed := hashMnemonic(sha256.New(), mnemonic, rounds)
+	seed := pbkdf2.Key([]byte(mnemonic), append([]byte("mnemonic"), []byte(pass)...), 2048, 64, sha512.New)
 
 	return generateKey(seed)
 }
@@ -108,18 +121,6 @@ func address(c *cli.Context) (err error) {
 	}
 
 	return printkey(c, k)
-}
-
-func hashMnemonic(hash hash.Hash, mnemonic string, rounds int) []byte {
-	seed := []byte(mnemonic)
-
-	for i := 0; i < rounds; i++ {
-		hash.Reset()
-		_, _ = hash.Write(seed) // error is impossible here, so omit it
-		seed = hash.Sum(seed[:0])
-	}
-
-	return seed
 }
 
 func deriviate(key *hdkeychain.ExtendedKey, path string) (k *hdkeychain.ExtendedKey, err error) {
@@ -258,6 +259,40 @@ func printkey(c *cli.Context, k *hdkeychain.ExtendedKey) (err error) {
 
 	fmt.Printf("private: %v\n", hex.EncodeToString(prv.Serialize()))
 	fmt.Printf("public : %v\n", hex.EncodeToString(pub.SerializeHybrid()))
+
+	n, err := k.Neuter()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(k)
+	fmt.Println(n)
+
+	return nil
+}
+
+func normalizeMnemonic(s string) string {
+	w := strings.Fields(s)
+	return strings.Join(w, " ")
+}
+
+func genMnemonic(c *cli.Context) error {
+	size := c.Int("size")
+	if size%32 != 0 {
+		return errors.New("wrong entropy len (ENT), must be multiple of 32 bits")
+	}
+
+	e, err := bip39.NewEntropy(size)
+	if err != nil {
+		panic(err)
+	}
+
+	s, err := bip39.NewMnemonic(e)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("%v\n", s)
 
 	return nil
 }
