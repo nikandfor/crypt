@@ -12,6 +12,8 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcutil"
+	"github.com/btcsuite/btcutil/base58"
 	"github.com/btcsuite/btcutil/hdkeychain"
 	"github.com/pkg/errors"
 	bip39 "github.com/tyler-smith/go-bip39"
@@ -257,8 +259,18 @@ func printkey(c *cli.Context, k *hdkeychain.ExtendedKey) (err error) {
 		return err
 	}
 
-	fmt.Printf("private: %v\n", hex.EncodeToString(prv.Serialize()))
-	fmt.Printf("public : %v\n", hex.EncodeToString(pub.SerializeHybrid()))
+	wif, err := btcutil.NewWIF(prv, &chaincfg.MainNetParams, false)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("WIF: %v\n", wif)
+
+	fmt.Printf("privatehex: %v\n", hex.EncodeToString(prv.Serialize()))
+	fmt.Printf("publichex : %v\n", hex.EncodeToString(pub.SerializeHybrid()))
+
+	fmt.Printf("private58: %v\n", base58.Encode(prv.Serialize()))
+	fmt.Printf("public58 : %v\n", base58.Encode(pub.SerializeHybrid()))
 
 	n, err := k.Neuter()
 	if err != nil {
