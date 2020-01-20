@@ -15,9 +15,9 @@ import (
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/base58"
 	"github.com/btcsuite/btcutil/hdkeychain"
+	"github.com/nikandfor/cli"
 	"github.com/pkg/errors"
 	bip39 "github.com/tyler-smith/go-bip39"
-	cli "gopkg.in/urfave/cli.v2"
 )
 
 var root *hdkeychain.ExtendedKey
@@ -46,39 +46,40 @@ var (
 )
 
 func main() {
-	var app cli.App
-	app.Commands = []*cli.Command{
-		{
-			Name:        "address",
-			Usage:       "<path> (example: /btc/acc'/0/123)",
-			Description: "calculates address",
-			Action:      address,
-			Flags: []cli.Flag{
-				&cli.BoolFlag{Name: "priv", Aliases: []string{"p"}, Value: false},
+	cli.App = cli.Command{
+		Commands: []*cli.Command{
+			{
+				Name:        "address",
+				Usage:       "<path> (example: /btc/acc'/0/123)",
+				Description: "calculates address",
+				Action:      address,
+				Flags: []*cli.Flag{
+					cli.NewFlag("priv,p", false, ""),
+				},
+				Before: initKey,
 			},
-			Before: initKey,
-		},
-		{
-			Name:        "mnemonic",
-			Usage:       "",
-			Description: "generates mnemonic",
-			Action:      genMnemonic,
-			Flags: []cli.Flag{
-				&cli.IntFlag{Name: "size"},
+			{
+				Name:        "mnemonic",
+				Usage:       "",
+				Description: "generates mnemonic",
+				Action:      genMnemonic,
+				Flags: []*cli.Flag{
+					cli.NewFlag("size", 0, ""),
+				},
 			},
 		},
-	}
-	app.Flags = []cli.Flag{
-		&cli.StringFlag{Name: "mnemonic", Aliases: []string{"m"}},
-		&cli.StringFlag{Name: "pass", Aliases: []string{"p"}},
-		&cli.StringFlag{Name: "seed", Aliases: []string{"s"}},
+		Flags: []*cli.Flag{
+			cli.NewFlag("mnemonic,m", "", "phrase"),
+			cli.NewFlag("password,pass,p", "", "password"),
+			cli.NewFlag("seed,s", "", "seed in hex"),
+		},
 	}
 
-	app.Run(os.Args)
+	cli.RunAndExit(os.Args)
 }
 
-func initKey(c *cli.Context) error {
-	if seed := c.String("seed"); len(seed) != 0 {
+func initKey(c *cli.Command) error {
+	if seed := c.String("seed"); seed != "" {
 		switch len(seed) {
 		case 2 * hdkeychain.RecommendedSeedLen:
 		case 128:
@@ -99,8 +100,8 @@ func initKey(c *cli.Context) error {
 
 	pass := c.String("pass")
 	mnemonic := c.String("mnemonic")
-	if !bip39.IsMnemonicValid(mnemonic) {
-		return errors.New("mnemonic is invalid")
+	if _, err := bip39.EntropyFromMnemonic(mnemonic); err != nil {
+		return errors.Wrap(err, "invalid mnemonic")
 	}
 	mnemonic = normalizeMnemonic(mnemonic)
 
@@ -114,8 +115,8 @@ func generateKey(seed []byte) (err error) {
 	return
 }
 
-func address(c *cli.Context) (err error) {
-	path := c.Args().First()
+func address(c *cli.Command) (err error) {
+	path := c.Args.First()
 
 	k, err := deriviate(root, path)
 	if err != nil {
@@ -243,7 +244,7 @@ func deriviate(key *hdkeychain.ExtendedKey, path string) (k *hdkeychain.Extended
 	return
 }
 
-func printkey(c *cli.Context, k *hdkeychain.ExtendedKey) (err error) {
+func printkey(c *cli.Command, k *hdkeychain.ExtendedKey) (err error) {
 	addr, err := k.Address(&chaincfg.MainNetParams)
 	if err != nil {
 		return err
@@ -288,7 +289,7 @@ func normalizeMnemonic(s string) string {
 	return strings.Join(w, " ")
 }
 
-func genMnemonic(c *cli.Context) error {
+func genMnemonic(c *cli.Command) error {
 	size := c.Int("size")
 	if size%32 != 0 {
 		return errors.New("wrong entropy len (ENT), must be multiple of 32 bits")
