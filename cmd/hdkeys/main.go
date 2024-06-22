@@ -1,3 +1,5 @@
+//go:build ignore
+
 package main
 
 import (
@@ -72,6 +74,9 @@ func main() {
 			cli.NewFlag("mnemonic,m", "", "phrase"),
 			cli.NewFlag("password,pass,p", "", "password"),
 			cli.NewFlag("seed,s", "", "seed in hex"),
+
+			cli.FlagfileFlag,
+			cli.HelpFlag,
 		},
 	}
 
