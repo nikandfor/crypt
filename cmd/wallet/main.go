@@ -2,11 +2,13 @@ package main
 
 import (
 	"crypto/sha512"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 
+	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/tyler-smith/go-bip39"
@@ -54,10 +56,18 @@ func main() {
 		Action: rawAddressRun,
 	}
 
+	btcrpc := &cli.Command{
+		Name:   "rpc",
+		Action: btcrpcRun,
+		Flags: []*cli.Flag{
+			cli.NewFlag("address", "", "base url"),
+		},
+	}
+
 	btc := &cli.Command{
-		Name:     "btc",
+		Name: "btc",
 		Commands: []*cli.Command{
-			//	btcAddress,
+			btcrpc,
 		},
 	}
 
@@ -118,16 +128,45 @@ func rawAddressRun(c *cli.Command) error {
 			return errors.Wrap(err, "derive %q", a)
 		}
 
-		tlog.V("key").Printw("key", "key", key)
+		pkey, err := key.Neuter()
+		if err != nil {
+			return errors.Wrap(err, "neuter %q", a)
+		}
+
+		tlog.V("key").Printw("key", "xpub", pkey)
+		tlog.V("key").Printw("key", "xprv", key)
+
+		prv, err := key.ECPrivKey()
+		if err != nil {
+			return errors.Wrap(err, "get priv key")
+		}
+
+		pub, err := key.ECPubKey()
+		if err != nil {
+			return errors.Wrap(err, "get pub key")
+		}
+
+		wif, err := btcutil.NewWIF(prv, &chaincfg.MainNetParams, true)
+		if err != nil {
+			return errors.Wrap(err, "make wif")
+		}
+
+		tlog.V("key").Printw("key", "pub", hex.EncodeToString(pub.SerializeCompressed()))
+		tlog.V("key").Printw("key", "prv", hex.EncodeToString(prv.Serialize()))
+		tlog.V("key").Printw("key", "wif", wif)
 
 		addr, err := key.Address(&chaincfg.MainNetParams)
 		if err != nil {
 			return errors.Wrap(err, "get btc address")
 		}
 
-		tlog.Printw("btc address", "pubkeyHash", addr)
+		tlog.Printw("btc address", "pkh", addr, "path", a)
 	}
 
+	return nil
+}
+
+func btcrpcRun(c *cli.Command) error {
 	return nil
 }
 
